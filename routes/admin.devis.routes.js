@@ -19,6 +19,79 @@ function toBuffer(maybeBinary) {
     return null;
   }
 }
+ /**
+ * ----------------------------------------------------
+ * 📌 ROUTE GLOBALE – /api/admin/devis/all
+ * ----------------------------------------------------
+ * Supporte :
+ *  - type=all/compression/traction/...
+ *  - q=motCle
+ *  - page=1
+ *  - limit=10
+ */
+router.get("/devis/all", auth, only("admin"), async (req, res) => {
+  try {
+    const { type = "all", q = "", page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Number(limit) || 10, 100);
+
+    // Filtre base
+    const filter = {};
+    if (type !== "all") filter.type = type;
+    if (q) filter.numero = { $regex: q, $options: "i" };
+
+    // On interroge les modèles selon type
+    const getModels = () => {
+      if (type !== "all") {
+        switch (type) {
+          case "compression": return [DevisCompression];
+          case "traction": return [DevisTraction];
+          case "torsion": return [DevisTorsion];
+          case "grille": return [DevisGrille];
+          case "fil": return [DevisFilDresse];
+          case "autre": return [DevisAutre];
+          default: return [];
+        }
+      }
+      // Sinon tous
+      return [
+        DevisCompression,
+        DevisTraction,
+        DevisTorsion,
+        DevisGrille,
+        DevisFilDresse,
+        DevisAutre,
+      ];
+    };
+
+    const models = getModels();
+    let allItems = [];
+
+    for (const Model of models) {
+      const docs = await Model.find(q ? filter : { type: Model.modelName })
+        .select("_id numero type createdAt updatedAt")
+        .lean();
+      allItems.push(...docs);
+    }
+
+    allItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const total = allItems.length;
+    const paginated = allItems.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+
+    res.json({
+      success: true,
+      items: paginated,
+      total,
+      page: pageNum,
+      limit: pageSize,
+    });
+
+  } catch (err) {
+    console.error("❌ GET /api/admin/devis/all error:", err);
+    res.status(500).json({ success: false, message: "Erreur serveur" });
+  }
+});
 
 /**
  * -------------------------

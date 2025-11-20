@@ -266,15 +266,17 @@ ${docsList}
   </body>
 </html>`;
 
-        await transporter.sendMail({
-          from: process.env.SMTP_USER,
-          to: process.env.ADMIN_EMAIL,
-          replyTo: clientEmail !== "-" ? clientEmail : undefined,
-          subject: `${fullName} - ${full.numero}`, // ✅ Nom Prénom - DDVxxxxx
-          text: textBody,
-          html: htmlBody,
-          attachments,
-        });
+   await transporter.sendMail({
+        from: process.env.SMTP_USER,
+        to: process.env.ADMIN_EMAIL,
+        replyTo: clientEmail !== "-" ? clientEmail : undefined,
+        subject: `${fullName} - ${full.numero}`,
+        text: textBody,
+        html: htmlBody,
+        attachments,
+});
+
+
       } catch (err) {
         console.error("Post-send PDF/email failed (compression):", err);
       }
