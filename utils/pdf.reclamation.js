@@ -44,7 +44,7 @@ export async function buildReclamationPDF(rec) {
       const topY = PAGE_LEFT;
 
       try {
-        const logoPath = path.resolve(process.cwd(), "assets/logo_MTR.png");
+        const logoPath = path.resolve(process.cwd(), "assets/logo.png");
         doc.image(logoPath, PAGE_LEFT, topY - 10, { width: 90, height: 90, fit: [90,90] });
       } catch {}
 
