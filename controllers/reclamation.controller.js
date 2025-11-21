@@ -95,7 +95,7 @@ export const createReclamation = async (req, res) => {
           </td></tr>
           <tr><td style="height:16px"></td></tr>
           <tr><td style="background:white;border:1px solid #e5e7eb;border-radius:12px;padding:24px;">
-              <h2>📩 Nouvelle réclamation reçue</h2>
+              <h2>Nouvelle réclamation reçue</h2>
               <p><b>Numéro :</b> ${full.numero}</p>
               <p><b>Client :</b> ${fullName}</p>
               <p><b>Email :</b> ${replyTo}</p>
