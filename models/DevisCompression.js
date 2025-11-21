@@ -38,7 +38,5 @@ schema.add({
 
 /* 🔥🔥 INDEXES OPTIMISÉS 🔥🔥 */
 schema.index({ createdAt: -1 });      // Accélère le tri DESC
-schema.index({ numero: 1 });          // Accélère les recherches sur numéro
-schema.index({ user: 1 });            // Utile pour filtrer / jointures utilisateur
 
 export default mongoose.model("DemandeDevisCompression", schema);
