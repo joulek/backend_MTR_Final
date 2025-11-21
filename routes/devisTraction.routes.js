@@ -34,13 +34,21 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
     const pipeline = [
       { $sort: { createdAt: -1, _id: -1 } },
 
-      // user
+      // Récupérer l'utilisateur
       { $lookup: { from: "users", localField: "user", foreignField: "_id", as: "u" } },
       { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
       {
         $addFields: {
           clientFull: {
-            $trim: { input: { $concat: [{ $ifNull: ["$u.prenom", ""] }, " ", { $ifNull: ["$u.nom", ""] }] } }
+            $trim: {
+              input: {
+                $concat: [
+                  { $ifNull: ["$u.prenom", ""] },
+                  " ",
+                  { $ifNull: ["$u.nom", ""] }
+                ]
+              }
+            }
           }
         }
       },
@@ -53,7 +61,7 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize },
 
-            // lookup vers devis(kind: traction)
+            // lookup vers collection devis
             {
               $lookup: {
                 from: "devis",
@@ -61,7 +69,12 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
                 pipeline: [
                   {
                     $match: {
-                      $expr: { $and: [{ $eq: ["$demande", "$$demandeId"] }, { $eq: ["$kind", "traction"] }] }
+                      $expr: {
+                        $and: [
+                          { $eq: ["$demande", "$$demandeId"] },
+                          { $eq: ["$kind", "traction"] }
+                        ]
+                      }
                     }
                   },
                   { $project: { _id: 0, numero: 1, pdf: 1 } }
@@ -71,13 +84,25 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
             },
             { $addFields: { devis: { $arrayElemAt: ["$devis", 0] } } },
 
-            // علّم إن كان عنده PDF للطلب
+            // 🌟 Correction de hasDemandePdf
             {
               $addFields: {
                 hasDemandePdf: {
                   $and: [
                     { $ne: ["$demandePdf", null] },
-                    { $gt: [{ $binarySize: { $ifNull: ["$demandePdf.data", []] } }, 0] }
+                    {
+                      $gt: [
+                        {
+                          $binarySize: {
+                            $cond: [
+                              { $isArray: "$demandePdf.data" }, "", // si array → chaîne vide
+                              { $ifNull: ["$demandePdf.data", ""] }
+                            ]
+                          }
+                        },
+                        0
+                      ]
+                    }
                   ]
                 }
               }
@@ -97,7 +122,14 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
                       size: {
                         $cond: [
                           { $gt: [{ $ifNull: ["$$d.data", null] }, null] },
-                          { $binarySize: "$$d.data" },
+                          {
+                            $binarySize: {
+                              $cond: [
+                                { $isArray: "$$d.data" }, "", // Si array → ""
+                                { $ifNull: ["$$d.data", ""] }
+                              ]
+                            }
+                          },
                           0
                         ]
                       }
@@ -112,6 +144,7 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
           total: [{ $count: "count" }]
         }
       },
+
       { $project: { items: "$data", total: { $ifNull: [{ $arrayElemAt: ["$total.count", 0] }, 0] } } }
     ];
 
@@ -122,6 +155,7 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
     res.status(500).json({ success: false, message: e.message || "Erreur serveur" });
   }
 });
+
 
 /** GET /api/devis/traction/:id/pdf — stream */
 router.get("/:id/pdf", auth, only("admin"), async (req, res) => {

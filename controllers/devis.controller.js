@@ -25,7 +25,7 @@ import Reclamation from "../models/reclamation.js";
 import { previewDevisNumber, nextDevisNumber } from "../utils/numbering.js";
 import Article from "../models/Article.js";
 import { buildDevisPDF } from "../utils/pdf.devis.js";
-import { makeTransport } from "../utils/mailer.js";
+import { makeTransportCommercial } from "../utils/mailer.js";
 
 // 👉 BASE publique du backend
 const ORIGIN =
@@ -540,7 +540,7 @@ export const createFromDemande = async (req, res) => {
     const pdfUrl = `${ORIGIN}/files/devis/${filename}`;
 
     if (sendEmail && devis.client.email) {
-      const transport = makeTransport();
+      const transport = makeTransportCommercial();
 
       // Styles communs
       const BRAND_PRIMARY = "#002147";
@@ -671,15 +671,14 @@ MTR – Manufacture Tunisienne des ressorts`;
   </body>
 </html>`;
 
-      await transport.sendMail({
-        from: process.env.MAIL_FROM || "devis@mtr.tn",
-        to: devis.client.email,
-        subject,
-        text: textBody,
-        html: htmlBody,
-        attachments: [{ filename, path: pdfPath }],
-      });
-    }
+     await transport.sendMail({
+  from: `"MTR Commercial" <${process.env.SMTP_COMMERCIAL_USER}>`, // 🔥 IMPORTANT !
+  to: devis.client.email,
+  subject,
+  text: textBody,
+  html: htmlBody,
+  attachments: [{ filename, path: pdfPath }],
+});}
 
     return res.json({
       success: true,

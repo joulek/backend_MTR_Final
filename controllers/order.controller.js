@@ -250,20 +250,28 @@ export async function placeClientOrder(req, res) {
     // 8) Envoi email
     const adminToRaw = (process.env.ADMIN_EMAIL || "").trim();
     const adminTo = isValidEmail(adminToRaw);
-    const from = (process.env.MAIL_FROM || "").trim() || `MTR <no-reply@mtr.tn>`;
+    const from = process.env.MAIL_FROM_ADMIN ;
     const cc = isValidEmail(uEmail) ? [uEmail] : undefined;
 
     const transport = makeTransport();
-    await transport.sendMail({
-      from,
-      to: adminTo,
-      cc,
-      replyTo: uEmail || undefined,
-      subject,
-      text: textBody,
-      html,
-      attachments: devisAttachment ? [devisAttachment] : [],
-    });
+   // Envoi email ASYNCHRONE (sans bloquer la réponse HTTP)
+transport.sendMail({
+  from: `${clientDisplay} <${process.env.SMTP_COMMERCIAL_USER}>`,
+  to: process.env.SMTP_COMMERCIAL_USER,
+  replyTo: uEmail || undefined,
+  subject,
+  text: textBody,
+  html,
+  attachments: devisAttachment ? [devisAttachment] : [],
+})
+  .then(() => {
+    console.log("📩 Mail envoyé au commercial");
+  })
+  .catch((err) => {
+    console.error("❌ Erreur envoi mail", err);
+  });
+
+
 
     return res.json({ success: true, message: "Commande confirmée", orderId: orderDoc?._id });
   } catch (err) {

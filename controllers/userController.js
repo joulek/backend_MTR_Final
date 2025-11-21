@@ -108,7 +108,7 @@ export const inviteUser = async (req, res) => {
     let emailResult = { sent:false };
     try {
       const transport = makeTransport();
-      const from = process.env.MAIL_FROM_ADMIN || process.env.SMTP_ADMIN_USER || process.env.MAIL_FROM || process.env.SMTP_USER;
+      const from = process.env.MAIL_FROM_ADMIN || process.env.SMTP_ADMIN_USER  || process.env.SMTP_USER;
 
       const subject = "Activez votre compte MTR Industrie";
       const html = `<!doctype html>

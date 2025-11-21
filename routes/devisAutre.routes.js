@@ -32,13 +32,15 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
     const pipeline = [
       { $sort: { createdAt: -1, _id: -1 } },
 
-      // join user
+      // 🔹 Récupérer user (client)
       { $lookup: { from: "users", localField: "user", foreignField: "_id", as: "u" } },
       { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
       {
         $addFields: {
           clientFull: {
-            $trim: { input: { $concat: [{ $ifNull: ["$u.prenom",""] }, " ", { $ifNull: ["$u.nom",""] }] } }
+            $trim: {
+              input: { $concat: [ { $ifNull: ["$u.prenom", ""] }, " ", { $ifNull: ["$u.nom", ""] } ] }
+            }
           }
         }
       },
@@ -51,13 +53,22 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize },
 
-            // lookup vers devis(kind:"autre")
+            // 🔍 Lookup pour devis (kind: "autre")
             {
               $lookup: {
                 from: "devis",
                 let: { demandeId: "$_id" },
                 pipeline: [
-                  { $match: { $expr: { $and: [ { $eq: ["$demande","$$demandeId"] }, { $eq: ["$kind","autre"] } ] } } },
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$demande", "$$demandeId"] },
+                          { $eq: ["$kind", "autre"] } // 🔥 CORRECTION ICI
+                        ]
+                      }
+                    }
+                  },
                   { $project: { _id: 0, numero: 1, pdf: 1 } }
                 ],
                 as: "devis"
@@ -65,19 +76,19 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
             },
             { $addFields: { devis: { $arrayElemAt: ["$devis", 0] } } },
 
-            // hasDemandePdf flag
+            // 📄 Vérification PDF
             {
               $addFields: {
                 hasDemandePdf: {
-                  $and: [
-                    { $ne: ["$demandePdf", null] },
-                    { $gt: [{ $binarySize: { $ifNull: ["$demandePdf.data", []] } }, 0] }
+                  $gt: [
+                    { $binarySize: { $ifNull: ["$demandePdf.data", ""] } },
+                    0
                   ]
                 }
               }
             },
 
-            // خفّف الوثائق: اسم + الحجم فقط
+            // 📌 Projection finale
             {
               $project: {
                 numero: 1,
@@ -89,17 +100,23 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
                     as: "d",
                     in: {
                       filename: "$$d.filename",
+                      mimetype: "$$d.mimetype",
                       size: {
                         $cond: [
-                          { $gt: [{ $ifNull: ["$$d.data", null] }, null] },
-                          { $binarySize: "$$d.data" },
+                          { $gt: [{ $binarySize: { $ifNull: ["$$d.data", ""] } }, 0] },
+                          { $binarySize: { $ifNull: ["$$d.data", ""] } },
                           0
                         ]
                       }
                     }
                   }
                 },
-                user: { _id: "$u._id", prenom: "$u.prenom", nom: "$u.nom" },
+                user: {
+                  _id: "$u._id",
+                  prenom: "$u.prenom",
+                  nom: "$u.nom",
+                  email: "$u.email"
+                },
                 devis: 1
               }
             }
@@ -110,8 +127,10 @@ router.get("/paginated", auth, only("admin"), async (req, res) => {
       { $project: { items: "$data", total: { $ifNull: [{ $arrayElemAt: ["$total.count", 0] }, 0] } } }
     ];
 
+    // 🔥 Correction modèle ici
     const [out = { items: [], total: 0 }] = await DevisAutre.aggregate(pipeline).allowDiskUse(true);
     res.json({ success: true, ...out });
+
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: e.message || "Erreur serveur" });

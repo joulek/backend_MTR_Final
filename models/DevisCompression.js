@@ -3,15 +3,14 @@ import mongoose from "mongoose";
 import { devisBase } from "./_devisBase.js";
 
 const spec = new mongoose.Schema({
-  d: { type: Number, required: true },   // diamètre du fil (d)
-  DE: { type: Number, required: true },   // diamètre extérieur (DE)
-  H: Number,                              // alésage (H)
-  S: Number,                              // guide (S)
-  DI: { type: Number, required: true },   // diamètre intérieur (DI)
-  Lo: { type: Number, required: true },   // longueur libre (Lo)
+  d: { type: Number, required: true },
+  DE: { type: Number, required: true },
+  H: Number,
+  S: Number,
+  DI: { type: Number, required: true },
+  Lo: { type: Number, required: true },
   nbSpires: { type: Number, required: true },
   pas: Number,
-
   quantite: { type: Number, required: true },
   matiere: {
     type: String,
@@ -37,5 +36,9 @@ schema.add({
   }
 });
 
+/* 🔥🔥 INDEXES OPTIMISÉS 🔥🔥 */
+schema.index({ createdAt: -1 });      // Accélère le tri DESC
+schema.index({ numero: 1 });          // Accélère les recherches sur numéro
+schema.index({ user: 1 });            // Utile pour filtrer / jointures utilisateur
 
 export default mongoose.model("DemandeDevisCompression", schema);

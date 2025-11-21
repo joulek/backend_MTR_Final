@@ -35,12 +35,15 @@ router.get("/devis/all", auth, only("admin"), async (req, res) => {
     const pageNum = Math.max(Number(page) || 1, 1);
     const pageSize = Math.min(Number(limit) || 10, 100);
 
-    // Filtre base
-    const filter = {};
-    if (type !== "all") filter.type = type;
-    if (q) filter.numero = { $regex: q, $options: "i" };
+    const typeMap = {
+      compression: "compression",
+      traction: "traction",
+      torsion: "torsion",
+      grille: "grille",
+      fil: "fil",
+      autre: "autre",
+    };
 
-    // On interroge les modèles selon type
     const getModels = () => {
       if (type !== "all") {
         switch (type) {
@@ -50,10 +53,8 @@ router.get("/devis/all", auth, only("admin"), async (req, res) => {
           case "grille": return [DevisGrille];
           case "fil": return [DevisFilDresse];
           case "autre": return [DevisAutre];
-          default: return [];
         }
       }
-      // Sinon tous
       return [
         DevisCompression,
         DevisTraction,
@@ -68,16 +69,34 @@ router.get("/devis/all", auth, only("admin"), async (req, res) => {
     let allItems = [];
 
     for (const Model of models) {
-      const docs = await Model.find(q ? filter : { type: Model.modelName })
-        .select("_id numero type createdAt updatedAt")
-        .lean();
+      let docs;
+
+      if (q) {
+        docs = await Model.find({
+          ...(type !== "all" ? { type: typeMap[type] } : {}),
+          numero: { $regex: q, $options: "i" },
+        })
+          .select("_id numero type createdAt updatedAt documents")
+          .populate("user", "prenom nom email") // 🔥 ajout client ici
+          .lean();
+      } else {
+        docs = await Model.find()
+          .select("_id numero type createdAt updatedAt documents")
+          .populate("user", "prenom nom email") // 🔥 ajout client ici
+          .lean();
+      }
+
       allItems.push(...docs);
     }
 
+    // Tri desc
     allItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const total = allItems.length;
     const paginated = allItems.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+
+    console.log("📦 Total:", total);
+    console.log("📤 Exemple:", paginated[0]);
 
     res.json({
       success: true,
@@ -86,12 +105,13 @@ router.get("/devis/all", auth, only("admin"), async (req, res) => {
       page: pageNum,
       limit: pageSize,
     });
-
   } catch (err) {
     console.error("❌ GET /api/admin/devis/all error:", err);
     res.status(500).json({ success: false, message: "Erreur serveur" });
   }
 });
+
+
 
 /**
  * -------------------------
@@ -251,37 +271,109 @@ router.get("/devis/torsion/:id/document/:index", auth, only("admin"), async (req
  * 📌 COMPRESSION  ✅ NOUVEAU
  * ------------------------------------------------------------------ */
 router.get("/devis/compression", auth, only("admin"), async (req, res) => {
+  console.log("📥 [GET] /api/admin/devis/compression");
+
   try {
-    const items = await DevisCompression.find({})
+    const items = await DevisCompression.find(
+      {}, 
+      { "demandePdf": 0, "documents.data": 0 } // 🚀 Exclure les buffers lourds
+    )
+      .sort({ createdAt: -1 })
+      .allowDiskUse(true)                       // 🚨 Autorise utilisation disque
       .populate("user", "prenom nom email numTel")
-      .sort("-createdAt")
       .lean();
 
-    const mapped = items.map((it) => ({
-      _id: it._id,
-      numero: it.numero,
-      type: it.type,
-      createdAt: it.createdAt,
-      updatedAt: it.updatedAt,
-      user: it.user,
-      spec: it.spec,
-      exigences: it.exigences,
-      remarques: it.remarques,
-      documents: (it.documents || []).map((d, idx) => ({
-        index: idx,
-        filename: d.filename,
-        mimetype: d.mimetype,
-        size: toBuffer(d?.data)?.length || 0,
-        hasData: !!(toBuffer(d?.data)?.length),
-      })),
-      hasDemandePdf: !!(toBuffer(it?.demandePdf?.data)?.length),
-    }));
-
-    res.json({ success: true, items: mapped });
+    console.log(`🟢 ${items.length} devis récupérés avec succès`);
+    res.json({ success: true, items });
   } catch (e) {
-    console.error("GET /api/admin/devis/compression error:", e);
+    console.error("❌ GET /api/admin/devis/compression error:", e);
     res.status(500).json({ success: false, message: "Erreur serveur" });
   }
+});
+
+
+// 📍 Pagination + recherche sécurisée
+router.get("/devis/compression/paginated", auth, only("admin"), async (req, res) => {
+  console.log("📥 [GET] /api/devis/compression/paginated", req.query);
+
+  const page = Number(req.query.page) || 1;
+  const pageSize = Number(req.query.pageSize) || 10;
+  const skip = (page - 1) * pageSize;
+  const search = (req.query.q || "").trim();
+
+  try {
+    // 🔍 Match uniquement sur numero
+    const match1 = search ? { numero: { $regex: search, $options: "i" } } : {};
+
+    const pipeline = [
+      { $match: match1 },
+
+      // ⚠️ Étape CRUCIALE : SUPPRIMER PDF AVANT TRI
+      {
+        $project: {
+          numero: 1,
+          type: 1,
+          createdAt: 1,
+          user: 1,
+          remarques: 1,
+          spec: 1,
+          "documents.data": 0,
+          "demandePdf": 0,
+        }
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      { $unwind: "$user" },
+
+      // Recherche côté user
+      ...(search ? [{
+        $match: {
+          $or: [
+            { "user.nom": { $regex: search, $options: "i" } },
+            { "user.prenom": { $regex: search, $options: "i" } }
+          ]
+        }
+      }] : []),
+
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: pageSize }
+    ];
+
+    // ⚠ Autorise le tri sur disque ICI
+    const items = await DevisCompression.aggregate(pipeline).allowDiskUse(true);
+
+    // ⚡ Plus rapide que countDocuments avec pipeline
+    const total = await DevisCompression.countDocuments(match1);
+
+    res.json({ success: true, items, total, page, pageSize });
+  } catch (error) {
+    console.error("❌ /api/devis/compression/paginated ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Erreur serveur",
+    });
+  }
+});
+
+ router.get("/devis/compression/pdf/:numero", auth, only("admin"), async (req, res) => {
+  const devis = await DevisCompression.findOne({ numero: req.params.numero }).lean();
+  if (!devis) return res.status(404).json({ success: false, message: "Devis introuvable" });
+
+  const buf = toBuffer(devis?.demandePdf?.data);
+  if (!buf?.length) return res.status(404).json({ success: false, message: "PDF non trouvé" });
+
+  res.setHeader("Content-Type", devis.demandePdf.contentType || "application/pdf");
+  res.setHeader("Content-Length", buf.length);
+  res.setHeader("Content-Disposition", `inline; filename="${devis.numero}.pdf"`);
+  res.end(buf);
 });
 
 router.get("/devis/compression/:id/pdf", auth, only("admin"), async (req, res) => {
